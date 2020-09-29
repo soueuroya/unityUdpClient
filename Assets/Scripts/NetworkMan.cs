@@ -106,7 +106,7 @@ public class NetworkMan : MonoBehaviour
         IPEndPoint source = new IPEndPoint(0, 0);
         byte[] message = socket.EndReceive(result, ref source);
         string returnData = Encoding.ASCII.GetString(message);
-        Debug.Log("Got this: " + returnData);
+        //Debug.Log("Got this: " + returnData);
         latestMessage = JsonUtility.FromJson<Message>(returnData);
         try
         {
@@ -128,7 +128,7 @@ public class NetworkMan : MonoBehaviour
                     {
                         newID.Push(player.id);
                     }
-                    Debug.Log("CLIENT_LIST");
+                    //Debug.Log("CLIENT_LIST");
                     break;
                 case commands.DROP:
                     PlayerList pl_d = JsonUtility.FromJson<PlayerList>(returnData);
@@ -136,21 +136,21 @@ public class NetworkMan : MonoBehaviour
                     {
                         dropID.Push(player.id);
                     }
-                    Debug.Log("DROP");
+                    //Debug.Log("DROP");
                     break;
                 case commands.OWN_ID:
                     OwnID oID = JsonUtility.FromJson<OwnID>(returnData);
                     ownedID = oID.ownID.id;
-                    Debug.Log("OWNID");
+                    //Debug.Log("OWNID");
                     break;
                 default:
-                    Debug.Log("Error");
+                    Debug.LogError("Error");
                     break;
             }
         }
         catch (Exception e)
         {
-            Debug.Log(e.ToString());
+            Debug.LogError(e.ToString());
         }
         socket.BeginReceive(new AsyncCallback(OnReceived), socket);
     }
@@ -217,7 +217,7 @@ public class NetworkMan : MonoBehaviour
         info.position = pos;
         info.rotation = rot;
         string jsonString = JsonUtility.ToJson(info);
-        Debug.Log(jsonString);
+        //Debug.Log(jsonString);
         Byte[] sendBytes = Encoding.ASCII.GetBytes(jsonString);
         udp.Send(sendBytes, sendBytes.Length);
     }
