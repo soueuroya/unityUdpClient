@@ -1,7 +1,4 @@
-﻿///Daniel Boldrin
-//101143582
-
-using System.Collections;
+﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using System;
@@ -11,241 +8,249 @@ using System.Net;
 
 public class NetworkMan : MonoBehaviour
 {
-    public UdpClient udp; // For talking to the server.
-    public GameObject playerPrefab; // The cube that will represent each player.
-    public List<PlayerCube> playersInGame; // A list of the CUBES (representing players) currently in the game.
-    public string myAddress;  // My IP and port. We'll use this later to make sure there's no funny business.
-    public List<string> playersToSpawn; // We have to store a list of players that we SHOULD spawn but HAVEN'T yet here, 
-    // so that our SpawnPlayers() function knows when it's time to do its thing.
+    public UdpClient udp;
+    public GameObject playerPrefab;
+    List<GameObject> playerList;
+    int playerCount;
 
-    // Start is called before the first frame update
+    Stack<string> newID;
+    Stack<string> dropID;
+
+    string ownedID;
+
     void Start()
     {
+        playerCount = 0;
+        playerList = new List<GameObject>();
+        newID = new Stack<string>();
+        dropID = new Stack<string>();
+
         udp = new UdpClient();
-        
-        udp.Connect("18.191.250.230", 12345); // Connect to the server at this address with this IP.
 
-        Byte[] sendBytes = Encoding.ASCII.GetBytes("connect"); // Make a message saying we'd like to connect, please.
-      
-        udp.Send(sendBytes, sendBytes.Length); // Send it.
+        udp.Connect("18.191.250.230", 12345);
 
-        udp.BeginReceive(new AsyncCallback(OnReceived), udp); // Receive messages.
+        Byte[] sendBytes = Encoding.ASCII.GetBytes("connect");
 
-        InvokeRepeating("HeartBeat", 1, 1); // Call our HeartBeat() function in one second, then keep doing it every one second.
+        udp.Send(sendBytes, sendBytes.Length);
 
-        InvokeRepeating("UpdateMyPosition", 1, 0.03f); // Call our UpdateMyPosition() function in one second, then keep doing it 30 times every second.
+        udp.BeginReceive(new AsyncCallback(OnReceived), udp);
+
+        InvokeRepeating("HeartBeat", 1, 0.033f);
     }
 
-    void OnDestroy(){
-        udp.Dispose(); // Clean up.
+    void OnDestroy()
+    {
+        udp.Dispose();
     }
 
 
-    public enum commands{ // We'll use this enum to know what the server is asking us to do.
+    public enum commands
+    {
         NEW_CLIENT,
         UPDATE,
-        DROPPED_CLIENT,
-        ALREADY_HERE_PLAYERS
+        CLIENT_LIST,
+        DROP,
+        OWN_ID
     };
-    
+
     [Serializable]
-    public class Message{ // This is what we'll turn whatever the server sends into.
+    public class Message
+    {
         public commands cmd;
     }
 
     [Serializable]
-    public class PositionUpdater // We use this to send our own position to the server, so it knows where we are and can tell the other clients.
-    {
-        public Vector3 position;
-    }
-
-    [Serializable]
-    public class Player{ // Different to PlayerCubes! We'll make some lists of objects of this class later, in GameState, DroppedPlayers, and AlreadyHerePlayerList
-        public string id; // Their IP and port.
-
-        [Serializable] // If this isn't serializable, you're in for a bad time.
-        public struct receivedPosition{ // We'll use this in about five lines.
-            public float x;
-            public float y;
-            public float z;
-        }
-        public receivedPosition position; // This is where we'll keep the positions for all the cubes that aren't us so we can move them to the right place on screen.
-
-    }
-
-
-
-    [Serializable]
-    public class DroppedPlayers // Players that have disconnected.
+    public class Player
     {
         public string id;
+        [Serializable]
+        public struct receivedColor
+        {
+            public float R;
+            public float G;
+            public float B;
+        }
+        public receivedColor color;
+
+        public Vector3 position;
+        public Vector3 rotation;
+    }
+    [Serializable]
+    class PlayerInfo
+    {
+        public Vector3 position;
+        public Vector3 rotation;
+    }
+    [Serializable]
+    public class OwnID
+    {
+        public Player ownID;
+    }
+    [Serializable]
+    public class PlayerList
+    {
+        public Player[] player;
+    }
+
+    [Serializable]
+    public class GameState
+    {
         public Player[] players;
-    }
-
-    [Serializable]
-    public class GameState 
-    {
-        public Player[] players; // Players currently online ACCORDING TO THE SERVER - different than PlayerCubes!
-    }
-
-    [Serializable]
-    public class AlreadyHerePlayerList // We only use this when we're a new player joining and want to know who else is already at the party, so we can make cubes for them.
-    {
-        public Player[] players;
-    }
-
-    [Serializable]
-    public class NewPlayer // For spawning a new player's cube when they arrive at the party.
-    {
-        public Player player;
     }
 
     public Message latestMessage;
-    public GameState latestGameState;
-    void OnReceived(IAsyncResult result){
-        // this is what had been passed into BeginReceive as the second parameter:
+    public GameState lastestGameState;
+    void OnReceived(IAsyncResult result)
+    {
         UdpClient socket = result.AsyncState as UdpClient;
-        
-        // points towards whoever had sent the message:
         IPEndPoint source = new IPEndPoint(0, 0);
-
-        // get the actual message and fill out the source:
         byte[] message = socket.EndReceive(result, ref source);
-        
-        // do what you'd like with `message` here:
         string returnData = Encoding.ASCII.GetString(message);
         //Debug.Log("Got this: " + returnData);
-
         latestMessage = JsonUtility.FromJson<Message>(returnData);
-        try{
-            switch(latestMessage.cmd){ // Work out what kind of command the server sent - what does it want from us?
-                case commands.NEW_CLIENT: // A new client is joining!
-                    NewPlayer newPlayer = JsonUtility.FromJson<NewPlayer>(returnData); // Make a NewPlayer object for this new player so we can make them a nice cube.
-                    Debug.Log(returnData);
-                    playersToSpawn.Add(newPlayer.player.id); // If I'M the new client, I should be the first thing I spawn
-                    if (myAddress == "") // So my address won't yet be set
+        try
+        {
+            switch (latestMessage.cmd)
+            {
+                case commands.NEW_CLIENT:
+                    PlayerList pl_nc = JsonUtility.FromJson<PlayerList>(returnData);
+                    foreach (var player in pl_nc.player)
                     {
-                        myAddress = newPlayer.player.id; // So set it - we'll use this later to avoid any tomfoolery
+                        newID.Push(player.id);
                     }
                     break;
-                case commands.UPDATE: // The server is just sending an update - this is where all the information about the OTHER cubes in our scene, 
-                    // not us, is sent to us, so we can put their cubes in the right place.
-                    latestGameState = JsonUtility.FromJson<GameState>(returnData); // latestGameState stores all the current players and their positions, so update that.
-                    UpdatePlayers(); // Move all the cubes around!
-                    Debug.Log(returnData);
+                case commands.UPDATE:
+                    lastestGameState = JsonUtility.FromJson<GameState>(returnData);
                     break;
-                case commands.DROPPED_CLIENT: // The server is telling us that someone has left the cube party.
-                    DroppedPlayers droppedPlayer = JsonUtility.FromJson<DroppedPlayers>(returnData); // Get the ID of the dropped player
-                    DestroyPlayers(droppedPlayer.id); // Get rid of their cube.
-                    Debug.Log(returnData);
-                    break;
-                case commands.ALREADY_HERE_PLAYERS: // This command should only come to the newly connected client - it's the server helpfully telling us who 
-                    // is already here, so we can spawn their cubes.
-                    AlreadyHerePlayerList alreadyHerePlayers = JsonUtility.FromJson<AlreadyHerePlayerList>(returnData); // Populate the list.
-                    foreach (Player player in alreadyHerePlayers.players)
+                case commands.CLIENT_LIST:
+                    PlayerList pl_cl = JsonUtility.FromJson<PlayerList>(returnData);
+                    foreach (var player in pl_cl.player)
                     {
-                        playersToSpawn.Add(player.id); // Spawn all the other cubes!
+                        newID.Push(player.id);
                     }
-                    Debug.Log(returnData);
+                    //Debug.Log("CLIENT_LIST");
+                    break;
+                case commands.DROP:
+                    PlayerList pl_d = JsonUtility.FromJson<PlayerList>(returnData);
+                    foreach (var player in pl_d.player)
+                    {
+                        dropID.Push(player.id);
+                    }
+                    //Debug.Log("DROP");
+                    break;
+                case commands.OWN_ID:
+                    OwnID oID = JsonUtility.FromJson<OwnID>(returnData);
+                    ownedID = oID.ownID.id;
+                    //Debug.Log("OWNID");
                     break;
                 default:
-                    Debug.Log("Error"); // Something went wrong.
+                    Debug.LogError("Error");
                     break;
             }
         }
-        catch (Exception e){
-            Debug.Log(e.ToString()); // Something went really wrong.
+        catch (Exception e)
+        {
+            Debug.LogError(e.ToString());
         }
-        
-        // schedule the next receive operation once reading is done:
         socket.BeginReceive(new AsyncCallback(OnReceived), socket);
     }
 
-    void SpawnWaitingPlayers()
+    void SpawnPlayers(string id)
     {
-        if (playersToSpawn.Count > 0) // If there are players in the waiting list...
+        foreach (var it in playerList)
         {
-            for (int i = 0; i < playersToSpawn.Count; i++) // Go through the waiting list
-            {
-                SpawnPlayer(playersToSpawn[i]); // Spawn each player.
-            }
-            playersToSpawn.Clear(); // Reset the list.
-            playersToSpawn.TrimExcess(); // Really reset it.
-        }
-    }
-
-    void SpawnPlayer(string _id) // Where new cubes are spawned.
-    { 
-        foreach(PlayerCube playerCube in playersInGame)
-        {
-            if (playerCube.networkID == _id) // If there's already a cube for me...
-            {
-                return; // Don't bother, and get out before the spawning stuff happens.
-            }
+            if (it.GetComponent<NetworkID>().id == id)
+                return;
         }
 
-        Vector3 randomPos = new Vector3(UnityEngine.Random.Range(-3f, 3f), 
-            0, UnityEngine.Random.Range(-3f, 3f)); // Come up with a random spot.
-        GameObject newPlayerCube = Instantiate(playerPrefab, randomPos, Quaternion.identity); //  Spawn the cube there.
-        newPlayerCube.GetComponent<PlayerCube>().networkID = _id; // Set the ID of the cube we just spawned.
-        playersInGame.Add(newPlayerCube.GetComponent<PlayerCube>()); // Add it to our list o' cubes.
+        GameObject temp = Instantiate(playerPrefab, new Vector3(-5 + playerCount, 0, 0), playerPrefab.transform.rotation);
+        temp.GetComponent<NetworkID>().id = id;
+        if (id == ownedID)
+        {
+            temp.AddComponent<PlayerController>();
+            temp.GetComponent<PlayerController>().network = this;
+        }
+        playerList.Add(temp);
+        playerCount++;
     }
 
-    void UpdatePlayers() // Updating all the cube positions except my own.
+    void UpdatePlayers()
     {
-        for (int i = 0; i < latestGameState.players.Length; i++) // Go through all the players the server says we have
+        foreach (var it in playerList)
         {
-            for (int j = 0; j < playersInGame.Count; j++) // And go through all the player cubes we have in game already
+            foreach (var p in lastestGameState.players)
             {
-                if (latestGameState.players[i].id == playersInGame[j].networkID) // If the player ID and the cube ID match
+                if (it.GetComponent<NetworkID>().id == p.id)
                 {
-                    if (latestGameState.players[i].id != myAddress) // And it's NOT me (my position is updated in my own Input section of PlayerCube.cs)
-                    {
-                        // Send the position the server says these other cubes have to their cube objects.
-                        playersInGame[j].newTransformPos =
-                          new Vector3(latestGameState.players[i].position.x, latestGameState.players[i].position.y, latestGameState.players[i].position.z); 
-                    }
+                    Color c = new Color(p.color.R, p.color.G, p.color.B);
+                    Debug.Log(c);
+                    it.GetComponent<Renderer>().material.SetColor("_Color", c);
+                    it.transform.position = p.position;
+                    it.transform.eulerAngles = p.rotation;
                 }
             }
         }
     }
 
-    void DestroyPlayers(string _id) // This is where we destroy cubes. 
+    void DestroyPlayers(string id)
     {
-        foreach (PlayerCube playerCube in playersInGame) // Go through all the cubes we have in the game currently.
+        for (int i = 0; i < playerList.Count; i++)
         {
-            if (playerCube.networkID == _id) // If this is the droid we're looking for (based on the _id sent)
+            var it = playerList[i];
+            if (it.GetComponent<NetworkID>().id == id)
             {
-                playerCube.markedForDestruction = true; // Tell the cube to delete itself on its next Update.
+                var temp = it;
+                playerList.Remove(it);
+                Destroy(temp);
             }
         }
     }
 
-    void HeartBeat() // Just telling the server we're still alive.
+    void HeartBeat()
     {
         Byte[] sendBytes = Encoding.ASCII.GetBytes("heartbeat");
         udp.Send(sendBytes, sendBytes.Length);
     }
 
-    void UpdateMyPosition()
+    public void SendPosition(Vector3 pos, Vector3 rot)
     {
-        PositionUpdater message = new PositionUpdater(); // Clean up the message ready to start again.
-
-        for (int i = 0; i < playersInGame.Count; i++) // Go through all the players and find which one is me.
-        {
-            if (playersInGame[i].networkID == myAddress) // If it is me...
-            {
-                message.position.x = playersInGame[i].transform.position.x; // Store my position details in a PositionUpdater 
-                message.position.y = playersInGame[i].transform.position.y; // Store my position details in a PositionUpdater 
-                message.position.z = playersInGame[i].transform.position.z; // Store my position details in a PositionUpdater 
-                Byte[] sendBytes = Encoding.ASCII.GetBytes(JsonUtility.ToJson(message)); // Encode that PositionUpdater into a json
-                udp.Send(sendBytes, sendBytes.Length); // Send it to the server.
-            }
-        }
+        PlayerInfo info = new PlayerInfo();
+        info.position = pos;
+        info.rotation = rot;
+        string jsonString = JsonUtility.ToJson(info);
+        //Debug.Log(jsonString);
+        Byte[] sendBytes = Encoding.ASCII.GetBytes(jsonString);
+        udp.Send(sendBytes, sendBytes.Length);
     }
 
     void Update()
     {
-        SpawnWaitingPlayers();
+        CheckNewPlayer();
+        UpdatePlayers();
+        CheckDropPlayer();
+    }
+
+    void CheckNewPlayer()
+    {
+        if (newID.Count > 0)
+        {
+            for (int i = 0; i < newID.Count; i++)
+            {
+                var it = newID.Pop();
+                SpawnPlayers(it);
+            }
+        }
+    }
+
+    void CheckDropPlayer()
+    {
+        if (dropID.Count > 0)
+        {
+            for (int i = 0; i < dropID.Count; i++)
+            {
+                var it = dropID.Pop();
+                DestroyPlayers(it);
+            }
+        }
     }
 }
