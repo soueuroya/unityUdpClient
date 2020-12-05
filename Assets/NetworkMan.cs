@@ -1,7 +1,5 @@
-﻿/* Daniel Boldrin
- * 101143582
- * Multiplayer Systems, George Brown College
- * Last Updated: 26/09/2020 */
+﻿///Daniel Boldrin
+//101143582
 
 using System.Collections;
 using System.Collections.Generic;
