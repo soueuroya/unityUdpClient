@@ -9,63 +9,59 @@ using System.Net;
 public class NetworkMan : MonoBehaviour
 {
     public UdpClient udp;
-    public GameObject playerPrefab;
-    List<GameObject> playerList;
-    int playerCount;
-
+    public GameObject cube;
+    List<GameObject> cubes;
     Stack<string> newID;
     Stack<string> dropID;
-
+    int spawnCounter;
     string ownedID;
 
+    // Start is called before the first frame update
     void Start()
     {
-        playerCount = 0;
-        playerList = new List<GameObject>();
+        spawnCounter = 0;
+        cubes = new List<GameObject>();
         newID = new Stack<string>();
         dropID = new Stack<string>();
 
         udp = new UdpClient();
-
+        
         udp.Connect("18.191.250.230", 12345);
 
         Byte[] sendBytes = Encoding.ASCII.GetBytes("connect");
-
+      
         udp.Send(sendBytes, sendBytes.Length);
 
         udp.BeginReceive(new AsyncCallback(OnReceived), udp);
 
         InvokeRepeating("HeartBeat", 1, 0.033f);
+       // InvokeRepeating("SendPosition", 1, 0.033f);
+
     }
 
-    void OnDestroy()
-    {
+    void OnDestroy(){
         udp.Dispose();
     }
 
-
-    public enum commands
-    {
+  
+    public enum commands{
         NEW_CLIENT,
         UPDATE,
         CLIENT_LIST,
         DROP,
         OWN_ID
     };
-
+    
     [Serializable]
-    public class Message
-    {
+    public class Message{
         public commands cmd;
     }
-
+    
     [Serializable]
-    public class Player
-    {
+    public class Player{
         public string id;
         [Serializable]
-        public struct receivedColor
-        {
+        public struct receivedColor{
             public float R;
             public float G;
             public float B;
@@ -87,127 +83,131 @@ public class NetworkMan : MonoBehaviour
         public Player ownID;
     }
     [Serializable]
-    public class PlayerList
-    {
+    public class NewPlayer{
         public Player[] player;
     }
 
     [Serializable]
-    public class GameState
-    {
+    public class GameState{
         public Player[] players;
     }
 
     public Message latestMessage;
     public GameState lastestGameState;
-    void OnReceived(IAsyncResult result)
-    {
+    void OnReceived(IAsyncResult result){
+        // this is what had been passed into BeginReceive as the second parameter:
         UdpClient socket = result.AsyncState as UdpClient;
+        
+        // points towards whoever had sent the message:
         IPEndPoint source = new IPEndPoint(0, 0);
+
+        // get the actual message and fill out the source:
         byte[] message = socket.EndReceive(result, ref source);
+        
+        // do what you'd like with `message` here:
         string returnData = Encoding.ASCII.GetString(message);
-        //Debug.Log("Got this: " + returnData);
+        Debug.Log("Got this: " + returnData);
+        
         latestMessage = JsonUtility.FromJson<Message>(returnData);
-        try
-        {
-            switch (latestMessage.cmd)
-            {
+        try{
+            switch(latestMessage.cmd){
+                
                 case commands.NEW_CLIENT:
-                    PlayerList pl_nc = JsonUtility.FromJson<PlayerList>(returnData);
-                    foreach (var player in pl_nc.player)
+                    NewPlayer p = JsonUtility.FromJson<NewPlayer>(returnData);
+                    foreach(var it in p.player)
                     {
-                        newID.Push(player.id);
+                        newID.Push(it.id);
                     }
                     break;
                 case commands.UPDATE:
                     lastestGameState = JsonUtility.FromJson<GameState>(returnData);
                     break;
                 case commands.CLIENT_LIST:
-                    PlayerList pl_cl = JsonUtility.FromJson<PlayerList>(returnData);
-                    foreach (var player in pl_cl.player)
+                    NewPlayer np = JsonUtility.FromJson<NewPlayer>(returnData);
+                    foreach (var it in np.player)
                     {
-                        newID.Push(player.id);
+                        newID.Push(it.id);
                     }
-                    //Debug.Log("CLIENT_LIST");
+                    Debug.Log("CLIENT_LIST");
                     break;
                 case commands.DROP:
-                    PlayerList pl_d = JsonUtility.FromJson<PlayerList>(returnData);
-                    foreach (var player in pl_d.player)
+                    NewPlayer dp = JsonUtility.FromJson<NewPlayer>(returnData);
+                    foreach (var it in dp.player)
                     {
-                        dropID.Push(player.id);
+                        dropID.Push(it.id);
                     }
-                    //Debug.Log("DROP");
+                    Debug.Log("DROP");
                     break;
                 case commands.OWN_ID:
                     OwnID oID = JsonUtility.FromJson<OwnID>(returnData);
                     ownedID = oID.ownID.id;
-                    //Debug.Log("OWNID");
+                    Debug.Log("OWNID");
                     break;
                 default:
-                    Debug.LogError("Error");
+                    Debug.Log("Error");
                     break;
             }
         }
-        catch (Exception e)
-        {
-            Debug.LogError(e.ToString());
+        catch (Exception e){
+            Debug.Log(e.ToString());
         }
+        
+        // schedule the next receive operation once reading is done:
         socket.BeginReceive(new AsyncCallback(OnReceived), socket);
     }
 
-    void SpawnPlayers(string id)
-    {
-        foreach (var it in playerList)
+    void SpawnPlayers(string id){
+        foreach (var it in cubes)
         {
             if (it.GetComponent<NetworkID>().id == id)
                 return;
         }
 
-        GameObject temp = Instantiate(playerPrefab, new Vector3(-5 + playerCount, 0, 0), playerPrefab.transform.rotation);
-        temp.GetComponent<NetworkID>().id = id;
+        GameObject temp = Instantiate(cube, new Vector3(-5 + spawnCounter, 0, 0), cube.transform.rotation);
+        temp.GetComponent<NetworkID>().id = id; // this is this player's id
         if (id == ownedID)
         {
             temp.AddComponent<PlayerController>();
-            temp.GetComponent<PlayerController>().network = this;
+            temp.GetComponent<PlayerController>().netMan = this;
         }
-        playerList.Add(temp);
-        playerCount++;
+        cubes.Add(temp);
+        spawnCounter++;
     }
 
-    void UpdatePlayers()
-    {
-        foreach (var it in playerList)
+    void UpdatePlayers(){
+        foreach(var it in cubes)
         {
             foreach (var p in lastestGameState.players)
             {
                 if (it.GetComponent<NetworkID>().id == p.id)
                 {
-                    Color c = new Color(p.color.R, p.color.G, p.color.B);
-                    Debug.Log(c);
-                    it.GetComponent<Renderer>().material.SetColor("_Color", c);
+                    // change it to position & rotation
                     it.transform.position = p.position;
                     it.transform.eulerAngles = p.rotation;
+
+                    //Color c = new Color(p.color.R, p.color.G, p.color.B);
+                    //it.GetComponent<Renderer>().material.SetColor("_Color", c);
                 }
             }
         }
     }
 
-    void DestroyPlayers(string id)
-    {
-        for (int i = 0; i < playerList.Count; i++)
+    void DestroyPlayers(string id){
+        for(int i = 0; i < cubes.Count; i++)
         {
-            var it = playerList[i];
+            var it = cubes[i];
             if (it.GetComponent<NetworkID>().id == id)
             {
                 var temp = it;
-                playerList.Remove(it);
+                cubes.Remove(it);
                 Destroy(temp);
             }
         }
+
     }
 
-    void HeartBeat()
-    {
+  
+    void HeartBeat(){
         Byte[] sendBytes = Encoding.ASCII.GetBytes("heartbeat");
         udp.Send(sendBytes, sendBytes.Length);
     }
@@ -218,32 +218,22 @@ public class NetworkMan : MonoBehaviour
         info.position = pos;
         info.rotation = rot;
         string jsonString = JsonUtility.ToJson(info);
-        //Debug.Log(jsonString);
+        Debug.Log(jsonString);
         Byte[] sendBytes = Encoding.ASCII.GetBytes(jsonString);
         udp.Send(sendBytes, sendBytes.Length);
     }
 
-    void Update()
-    {
-        CheckNewPlayer();
-        UpdatePlayers();
-        CheckDropPlayer();
-    }
-
-    void CheckNewPlayer()
-    {
+    void Update(){
         if (newID.Count > 0)
         {
-            for (int i = 0; i < newID.Count; i++)
+            for(int i = 0; i < newID.Count; i++)
             {
                 var it = newID.Pop();
                 SpawnPlayers(it);
             }
         }
-    }
+        UpdatePlayers();
 
-    void CheckDropPlayer()
-    {
         if (dropID.Count > 0)
         {
             for (int i = 0; i < dropID.Count; i++)

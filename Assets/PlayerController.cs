@@ -4,56 +4,44 @@ using UnityEngine;
 
 public class PlayerController : MonoBehaviour
 {
-    public NetworkMan network;
+    //public GameObject cube;
+    public NetworkMan netMan;
+    Vector3 positionVector3;
+    Vector3 rotationVector3;
 
-    [SerializeField]
-    float speed;
 
-    [SerializeField]
-    float rotationSpeed;
-
-    Vector3 pos;
-    Vector3 rot;
-
+    // Start is called before the first frame update
     void Start()
     {
-        speed = 1;
-        rotationSpeed = 90;
-        InvokeRepeating("UpdatePosition", 1, 0.033f);
+        
+        InvokeRepeating("SendPos", 1, 0.033f);
+
     }
 
-    public PlayerController(NetworkMan _network)
-    {
-        network = _network;
-    }
-
+    // Update is called once per frame
     void Update()
     {
         if (Input.GetKey(KeyCode.UpArrow))
         {
-            pos += transform.TransformVector(Vector3.forward) * Time.deltaTime * speed;
-            //UpdatePosition();
+            positionVector3 += transform.TransformVector(Vector3.forward) * Time.deltaTime;
         }
-        else if (Input.GetKey(KeyCode.DownArrow))
+        if (Input.GetKey(KeyCode.DownArrow))
         {
-            pos -= transform.TransformVector(Vector3.forward) * Time.deltaTime * speed;
-            //UpdatePosition();
+            positionVector3 -= transform.TransformVector(Vector3.forward) * Time.deltaTime;
         }
-
         if (Input.GetKey(KeyCode.LeftArrow))
         {
-            rot -= Vector3.up * Time.deltaTime * rotationSpeed;
-            //UpdatePosition();
+            rotationVector3 -= new Vector3(0, 1, 0) * Time.deltaTime * 90f;
         }
-        else if (Input.GetKey(KeyCode.RightArrow))
+        if (Input.GetKey(KeyCode.RightArrow))
         {
-            rot += Vector3.up * Time.deltaTime * rotationSpeed;
-            //UpdatePosition();
+            rotationVector3 += new Vector3(0, 1, 0) * Time.deltaTime * 90f;
         }
+
     }
 
-    void UpdatePosition()
+    void SendPos()
     {
-        network.SendPosition(pos, rot);
+        netMan.SendPosition(positionVector3, rotationVector3);
     }
 }
