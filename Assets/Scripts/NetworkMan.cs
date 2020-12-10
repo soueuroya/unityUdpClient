@@ -9,18 +9,24 @@ using System.Net;
 public class NetworkMan : MonoBehaviour
 {
     public UdpClient udp;
-    public GameObject cube;
-    List<GameObject> cubes;
+    public GameObject player;
+    public GameObject player2;
+    //public Transform playerSpawn;
+    //public Transform player2Spawn;
+    //public Transform ballSpawn;
+    public GameObject ball;
+    //public Transform canvas;
+    List<GameObject> players;
     Stack<string> newID;
     Stack<string> dropID;
     int spawnCounter;
     string ownedID;
+    public bool spawningPlayer2 = false;
 
-    // Start is called before the first frame update
     void Start()
     {
         spawnCounter = 0;
-        cubes = new List<GameObject>();
+        players = new List<GameObject>();
         newID = new Stack<string>();
         dropID = new Stack<string>();
 
@@ -35,7 +41,6 @@ public class NetworkMan : MonoBehaviour
         udp.BeginReceive(new AsyncCallback(OnReceived), udp);
 
         InvokeRepeating("HeartBeat", 1, 0.033f);
-       // InvokeRepeating("SendPosition", 1, 0.033f);
 
     }
 
@@ -72,10 +77,15 @@ public class NetworkMan : MonoBehaviour
         public Vector3 rotation;
     }
     [Serializable]
+    class BallInfo
+    {
+        public Vector3 rotation;
+        public Vector3 position;
+    }
+    [Serializable]
     class PlayerInfo
     {
         public Vector3 position;
-        public Vector3 rotation;
     }
     [Serializable]
     public class OwnID
@@ -106,7 +116,7 @@ public class NetworkMan : MonoBehaviour
         
         // do what you'd like with `message` here:
         string returnData = Encoding.ASCII.GetString(message);
-        Debug.Log("Got this: " + returnData);
+        //Debug.Log("Got this: " + returnData);
         
         latestMessage = JsonUtility.FromJson<Message>(returnData);
         try{
@@ -128,7 +138,7 @@ public class NetworkMan : MonoBehaviour
                     {
                         newID.Push(it.id);
                     }
-                    Debug.Log("CLIENT_LIST");
+                    //Debug.Log("CLIENT_LIST");
                     break;
                 case commands.DROP:
                     NewPlayer dp = JsonUtility.FromJson<NewPlayer>(returnData);
@@ -136,15 +146,15 @@ public class NetworkMan : MonoBehaviour
                     {
                         dropID.Push(it.id);
                     }
-                    Debug.Log("DROP");
+                    //Debug.Log("DROP");
                     break;
                 case commands.OWN_ID:
                     OwnID oID = JsonUtility.FromJson<OwnID>(returnData);
                     ownedID = oID.ownID.id;
-                    Debug.Log("OWNID");
+                    //Debug.Log("OWNID");
                     break;
                 default:
-                    Debug.Log("Error");
+                    //Debug.Log("Error");
                     break;
             }
         }
@@ -157,29 +167,65 @@ public class NetworkMan : MonoBehaviour
     }
 
     void SpawnPlayers(string id){
-        foreach (var it in cubes)
+
+        GameObject ptemp;
+        GameObject btemp;
+
+        foreach (var it in players)
         {
             if (it.GetComponent<NetworkID>().id == id)
+            {
+                //Debug.Log("RETURNING --11111111111111111111111" + id);
                 return;
+            }
         }
 
-        GameObject temp = Instantiate(cube, new Vector3(-5 + spawnCounter, 0, 0), cube.transform.rotation);
-        temp.GetComponent<NetworkID>().id = id; // this is this player's id
-        if (id == ownedID)
+        if (!spawningPlayer2)
         {
-            temp.AddComponent<PlayerController>();
-            temp.GetComponent<PlayerController>().netMan = this;
+            //Debug.Log("Inst player 1 --77777777777777777" + id);
+            ptemp = Instantiate(player, new Vector3(-1.2f, 0, 0), player.transform.rotation);
+
+            ptemp.GetComponent<NetworkID>().id = id; // this is this player's id
+            if (id == ownedID)
+            {
+                //Debug.Log("OWNEDID --888888888888888" + id);
+                ptemp.AddComponent<PlayerController>();
+                ptemp.GetComponent<PlayerController>().netMan = this;
+            }
+            players.Add(ptemp);
+            spawnCounter++;
+            spawningPlayer2 = true;
         }
-        cubes.Add(temp);
-        spawnCounter++;
+        else
+        {
+            ptemp = Instantiate(player2, new Vector3(1.2f, 0, 0), player2.transform.rotation);
+
+            ptemp.GetComponent<NetworkID>().id = id; // this is this player's id
+            if (id == ownedID)
+            {
+                ptemp.AddComponent<PlayerController>();
+                ptemp.GetComponent<PlayerController>().netMan = this;
+                ptemp.GetComponent<PlayerController>().isPlayer1 = false;
+                ptemp.GetComponent<PlayerController>().SendPos();
+            }
+
+            players.Add(ptemp);
+            spawnCounter++;
+
+            btemp = Instantiate(ball, new Vector3(0, 0, 0), ball.transform.rotation);
+            btemp.GetComponent<NetworkID>().id = "ball";
+            btemp.GetComponent<BallScript>().netMan = this;
+            //players.Add(btemp);
+            spawningPlayer2 = false;
+        }
     }
 
     void UpdatePlayers(){
-        foreach(var it in cubes)
+        foreach(var it in players)
         {
             foreach (var p in lastestGameState.players)
             {
-                if (it.GetComponent<NetworkID>().id == p.id)
+                if (it.GetComponent<NetworkID>().id == p.id /*|| it.GetComponent<NetworkID>().id == "ball"*/)
                 {
                     // change it to position & rotation
                     it.transform.position = p.position;
@@ -193,45 +239,62 @@ public class NetworkMan : MonoBehaviour
     }
 
     void DestroyPlayers(string id){
-        for(int i = 0; i < cubes.Count; i++)
+        for(int i = 0; i < players.Count; i++)
         {
-            var it = cubes[i];
+            var it = players[i];
             if (it.GetComponent<NetworkID>().id == id)
             {
                 var temp = it;
-                cubes.Remove(it);
+                players.Remove(it);
                 Destroy(temp);
+                spawnCounter--;
             }
         }
 
     }
 
-  
     void HeartBeat(){
         Byte[] sendBytes = Encoding.ASCII.GetBytes("heartbeat");
         udp.Send(sendBytes, sendBytes.Length);
     }
 
-    public void SendPosition(Vector3 pos, Vector3 rot)
+    public void SendPosition(Vector3 rot, Vector3 pos)
+    {
+        BallInfo info = new BallInfo();
+        info.rotation = rot;
+        info.position = pos;
+        string jsonString = JsonUtility.ToJson(info);
+        //Debug.Log(jsonString);
+        Byte[] sendBytes = Encoding.ASCII.GetBytes(jsonString);
+        udp.Send(sendBytes, sendBytes.Length);
+    }
+
+    public void SendPosition(Vector3 pos)
     {
         PlayerInfo info = new PlayerInfo();
         info.position = pos;
-        info.rotation = rot;
         string jsonString = JsonUtility.ToJson(info);
-        Debug.Log(jsonString);
+        //Debug.Log(jsonString);
         Byte[] sendBytes = Encoding.ASCII.GetBytes(jsonString);
         udp.Send(sendBytes, sendBytes.Length);
     }
 
     void Update(){
+        //Debug.Log("COUNT ------- " + newID.Count);
         if (newID.Count > 0)
         {
+            if (newID.Count > 2)
+            {
+                spawningPlayer2 = true;
+            }
+
             for(int i = 0; i < newID.Count; i++)
             {
                 var it = newID.Pop();
                 SpawnPlayers(it);
             }
         }
+
         UpdatePlayers();
 
         if (dropID.Count > 0)

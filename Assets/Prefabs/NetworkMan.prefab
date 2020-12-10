@@ -43,7 +43,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f1ad586668d834644b8076c3e4f8466f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  cube: {fileID: 4530888911845912320, guid: 57c1190a5e7e9074799a2d60dbb0a5c0, type: 3}
+  player: {fileID: 4019063575286240130, guid: da2046d0c979e624c8f2d9a8c1f3b9bc, type: 3}
+  player2: {fileID: 6739987873872364525, guid: 2cf34f3878ead2642987bb4e0d941ace, type: 3}
+  ball: {fileID: 5272945014920767564, guid: 9d608ef16f764c6498d8aba73242cc21, type: 3}
   latestMessage:
     cmd: 0
   lastestGameState:
