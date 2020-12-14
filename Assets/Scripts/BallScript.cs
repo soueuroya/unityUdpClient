@@ -37,11 +37,14 @@ public class BallScript : MonoBehaviour
     void Update()
     {
         //gameObject.transform.position = gameObject.transform.position + new Vector3(x, y, 0) * Time.deltaTime;
+        positionVector3 = gameObject.transform.position + new Vector3(x, y, 0) * Time.deltaTime;
+        rotationVector3 = gameObject.transform.rotation.eulerAngles;
+        Debug.Log(gameObject.name);
     }
 
     public void SendPos()
     {
-        //netMan.SendPosition(rotationVector3, positionVector3);
+        netMan.SendPosition(rotationVector3, positionVector3);
     }
 
     public void Launch()

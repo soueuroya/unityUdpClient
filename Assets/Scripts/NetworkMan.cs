@@ -5,6 +5,7 @@ using System;
 using System.Text;
 using System.Net.Sockets;
 using System.Net;
+using UnityEngine.UI;
 
 public class NetworkMan : MonoBehaviour
 {
@@ -15,6 +16,7 @@ public class NetworkMan : MonoBehaviour
     //public Transform player2Spawn;
     //public Transform ballSpawn;
     public GameObject ball;
+    public GameObject btemp;
     //public Transform canvas;
     List<GameObject> players;
     Stack<string> newID;
@@ -22,9 +24,12 @@ public class NetworkMan : MonoBehaviour
     int spawnCounter;
     string ownedID;
     public bool spawningPlayer2 = false;
+    public GameObject canvas;
+    public Button create, join;
 
     void Start()
     {
+        join.interactable = false;
         spawnCounter = 0;
         players = new List<GameObject>();
         newID = new Stack<string>();
@@ -159,7 +164,7 @@ public class NetworkMan : MonoBehaviour
             }
         }
         catch (Exception e){
-            Debug.Log(e.ToString());
+            //Debug.Log(e.ToString());
         }
         
         // schedule the next receive operation once reading is done:
@@ -169,7 +174,6 @@ public class NetworkMan : MonoBehaviour
     void SpawnPlayers(string id){
 
         GameObject ptemp;
-        GameObject btemp;
 
         foreach (var it in players)
         {
@@ -206,6 +210,8 @@ public class NetworkMan : MonoBehaviour
                 ptemp.AddComponent<PlayerController>();
                 ptemp.GetComponent<PlayerController>().netMan = this;
                 ptemp.GetComponent<PlayerController>().isPlayer1 = false;
+                join.interactable = true;
+                create.interactable = false;
                 ptemp.GetComponent<PlayerController>().SendPos();
             }
 
@@ -215,25 +221,52 @@ public class NetworkMan : MonoBehaviour
             btemp = Instantiate(ball, new Vector3(0, 0, 0), ball.transform.rotation);
             btemp.GetComponent<NetworkID>().id = "ball";
             btemp.GetComponent<BallScript>().netMan = this;
-            //players.Add(btemp);
+            players.Add(btemp);
             spawningPlayer2 = false;
+            canvas.SetActive(false);
         }
     }
 
     void UpdatePlayers(){
-        foreach(var it in players)
+        if (btemp == null)
+        {
+            btemp = GameObject.Find("Ball");
+            if (btemp == null)
+            {
+                btemp = GameObject.Find("Ball(Clone)");
+            }
+        }
+        foreach (var it in players)
         {
             foreach (var p in lastestGameState.players)
             {
-                if (it.GetComponent<NetworkID>().id == p.id /*|| it.GetComponent<NetworkID>().id == "ball"*/)
+                if (it.GetComponent<NetworkID>().id == p.id && p.id != "ball")
                 {
+                    Debug.Log("ID: " + it.GetComponent<NetworkID>().id + "   ------   " + p.id + " < P ID");
                     // change it to position & rotation
-                    it.transform.position = p.position;
-                    it.transform.eulerAngles = p.rotation;
+                    Debug.Log(p.position + " <<<<<<< " + p.id);
+                    if (p.position.x == 1.2f || p.position.x == -1.2f)
+                    {
+                        it.transform.position = p.position;
+                    }
+                    else
+                    {
+                        btemp.transform.position = p.position;
+                    }
+                    //it.transform.eulerAngles = p.rotation;
 
                     //Color c = new Color(p.color.R, p.color.G, p.color.B);
                     //it.GetComponent<Renderer>().material.SetColor("_Color", c);
                 }
+                else if (it.GetComponent<NetworkID>().id == "ball" && p.id == "ball")
+                {
+                    if (p.position.x != 1.2f && p.position.x != -1.2f)
+                    {
+                        btemp.transform.position = p.position;
+                    }
+                    Debug.Log("its the ball");
+                }
+                Debug.Log("FOREACH" + it.name + "  -----  " + p.id);
             }
         }
     }
@@ -305,5 +338,15 @@ public class NetworkMan : MonoBehaviour
                 DestroyPlayers(it);
             }
         }
+    }
+
+    public void CreateClicked()
+    {
+        create.interactable = false;
+    }
+
+    public void JoinClicked()
+    {
+        canvas.SetActive(false);
     }
 }
